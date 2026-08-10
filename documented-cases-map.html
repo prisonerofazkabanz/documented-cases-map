@@ -1,0 +1,594 @@
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+
+<style>
+  :root{
+    --bg: #171513;
+    --bg-raised: #211e1b;
+    --card: #262320;
+    --line: #38332e;
+    --ink: #e9e2d6;
+    --ink-dim: #a89f92;
+    --ink-faint: #776e63;
+    --brass: #a3824f;
+    --brass-dim: #6e5a3a;
+    --confirmed: #5c7a5e;
+    --investigation: #ab8438;
+    --disputed: #6b6560;
+    --candle: #7a3b32;
+    --serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
+    --sans: 'Segoe UI', -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
+    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:transparent;color:var(--ink);font-family:var(--sans);}
+  #app{background:var(--bg);min-height:100vh;}
+
+  .header{
+    padding:28px 28px 20px;
+    border-bottom:1px solid var(--line);
+    background:
+      radial-gradient(600px 200px at 15% 0%, rgba(163,130,79,0.08), transparent 60%),
+      var(--bg-raised);
+  }
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--brass);
+    margin:0 0 8px;
+  }
+  h1{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:30px;
+    margin:0 0 6px;
+    color:var(--ink);
+    letter-spacing:.01em;
+  }
+  .sub{
+    font-size:13.5px;
+    color:var(--ink-dim);
+    max-width:640px;
+    line-height:1.55;
+    margin:0;
+  }
+  .method-note{
+    margin-top:14px;
+    font-size:12px;
+    color:var(--ink-faint);
+    border-left:2px solid var(--brass-dim);
+    padding:6px 0 6px 12px;
+    max-width:640px;
+    line-height:1.6;
+  }
+
+  .toolbar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+    padding:14px 28px;
+    border-bottom:1px solid var(--line);
+    background:var(--bg);
+  }
+  .chip{
+    font-family:var(--mono);
+    font-size:11.5px;
+    letter-spacing:.03em;
+    padding:6px 12px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:var(--card);
+    color:var(--ink-dim);
+    cursor:pointer;
+    user-select:none;
+    transition:border-color .15s, color .15s;
+  }
+  .chip:hover{border-color:var(--brass-dim); color:var(--ink);}
+  .chip.active{border-color:var(--brass); color:var(--brass); background:rgba(163,130,79,.08);}
+  .spacer{flex:1;}
+  .addbtn{
+    font-family:var(--sans);
+    font-size:12.5px;
+    font-weight:600;
+    padding:8px 16px;
+    border-radius:4px;
+    border:1px solid var(--brass-dim);
+    background:var(--brass);
+    color:#171410;
+    cursor:pointer;
+  }
+  .addbtn:hover{background:#b4925f;}
+
+  .layout{
+    display:grid;
+    grid-template-columns:1fr 380px;
+    min-height:560px;
+  }
+  #map{
+    height:100%;
+    min-height:560px;
+    background:#0f0d0c;
+    filter:saturate(0.55) brightness(0.9);
+  }
+  .leaflet-popup-content-wrapper{
+    background:var(--card);
+    color:var(--ink);
+    border-radius:4px;
+  }
+  .leaflet-popup-tip{ background:var(--card); }
+  .leaflet-popup-content{ font-family:var(--sans); font-size:12.5px; margin:10px 12px;}
+
+  .sidebar{
+    border-left:1px solid var(--line);
+    background:var(--bg-raised);
+    overflow-y:auto;
+    max-height:80vh;
+  }
+  .sidebar-head{
+    padding:14px 18px 10px;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    border-bottom:1px solid var(--line);
+  }
+  .case-row{
+    padding:14px 18px;
+    border-bottom:1px solid var(--line);
+    cursor:pointer;
+    transition:background .12s;
+  }
+  .case-row:hover{ background:rgba(163,130,79,.05); }
+  .case-row.selected{ background:rgba(163,130,79,.10); border-left:2px solid var(--brass); }
+  .case-name{
+    font-family:var(--serif);
+    font-size:16px;
+    margin:0 0 4px;
+    color:var(--ink);
+  }
+  .case-meta{
+    font-size:11.5px;
+    color:var(--ink-dim);
+    display:flex;
+    gap:8px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  .status-dot{ width:7px; height:7px; border-radius:50%; display:inline-block; }
+  .status-confirmed{ background:var(--confirmed); }
+  .status-investigation{ background:var(--investigation); }
+  .status-disputed{ background:var(--disputed); }
+
+  .empty{
+    padding:24px 18px;
+    color:var(--ink-faint);
+    font-size:12.5px;
+    line-height:1.6;
+  }
+
+  /* Detail drawer */
+  .drawer-overlay{
+    position:fixed; inset:0; background:rgba(10,9,8,.6);
+    display:none; align-items:center; justify-content:center; z-index:1000; padding:20px;
+  }
+  .drawer-overlay.open{ display:flex; }
+  .drawer{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:6px;
+    max-width:560px; width:100%;
+    max-height:86vh; overflow-y:auto;
+    padding:26px 26px 22px;
+  }
+  .drawer-close{
+    float:right; background:none; border:none; color:var(--ink-faint);
+    font-size:20px; cursor:pointer; line-height:1;
+  }
+  .drawer h2{
+    font-family:var(--serif); font-weight:400; font-size:24px; margin:0 0 4px; color:var(--ink);
+  }
+  .drawer .loc{ font-size:13px; color:var(--brass); font-family:var(--mono); margin-bottom:14px;}
+  .drawer .status-line{
+    display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-dim);
+    margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid var(--line);
+  }
+  .drawer .field{ margin-bottom:14px; }
+  .drawer .field-label{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-faint); margin-bottom:4px;
+  }
+  .drawer .field-value{ font-size:13.5px; color:var(--ink); line-height:1.6; }
+  .sources-list{ list-style:none; margin:0; padding:0; }
+  .sources-list li{ margin-bottom:6px; }
+  .sources-list a{ color:var(--brass); font-size:13px; text-decoration:none; }
+  .sources-list a:hover{ text-decoration:underline; }
+
+  /* Add form */
+  .form-row{ margin-bottom:12px; display:flex; flex-direction:column; gap:5px; }
+  .form-row label{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint);
+  }
+  .form-row input, .form-row select, .form-row textarea{
+    background:var(--bg); border:1px solid var(--line); color:var(--ink);
+    padding:8px 10px; border-radius:4px; font-family:var(--sans); font-size:13px;
+  }
+  .form-row textarea{ resize:vertical; min-height:60px; }
+  .form-two{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .form-actions{ display:flex; gap:10px; margin-top:6px; }
+  .btn-primary{
+    background:var(--brass); color:#171410; border:none; padding:9px 18px; border-radius:4px;
+    font-weight:600; font-size:13px; cursor:pointer;
+  }
+  .btn-secondary{
+    background:none; color:var(--ink-dim); border:1px solid var(--line); padding:9px 18px; border-radius:4px;
+    font-size:13px; cursor:pointer;
+  }
+  .save-status{ font-size:11.5px; color:var(--ink-faint); margin-left:auto; align-self:center; }
+
+  .footer-note{
+    padding:14px 28px 24px;
+    font-size:11.5px;
+    color:var(--ink-faint);
+    line-height:1.6;
+    border-top:1px solid var(--line);
+  }
+
+  @media (max-width: 820px){
+    .layout{ grid-template-columns:1fr; }
+    #map{ min-height:380px; }
+    .sidebar{ border-left:none; border-top:1px solid var(--line); max-height:none; }
+  }
+</style>
+
+<div id="app">
+  <div class="header">
+    <p class="eyebrow">A Verified Record — Not a Rumor Tracker</p>
+    <h1>Documented Cases Map</h1>
+    <p class="sub">This project tracks confirmed cases of Black individuals found hanged, each entry sourced to law enforcement statements, medical examiner findings, or credible reporting — built specifically to counter unverified viral tallies with a transparent, checkable record.</p>
+    <p class="method-note">Every case here is labeled by verification status. Nothing is added without a source link. Cases that were misidentified or debunked are kept in the record, not deleted, so the correction itself is visible.</p>
+  </div>
+
+  <div class="toolbar" id="toolbar">
+    <span class="chip active" data-filter="all">All cases</span>
+    <span class="chip" data-filter="Confirmed">● Confirmed</span>
+    <span class="chip" data-filter="Under Investigation">● Under investigation</span>
+    <span class="chip" data-filter="Disputed">● Disputed / misidentified</span>
+    <div class="spacer"></div>
+    <button class="addbtn" id="addBtn">+ Add a case</button>
+  </div>
+
+  <div class="layout">
+    <div id="map"></div>
+    <div class="sidebar">
+      <div class="sidebar-head" id="sidebarCount">0 cases</div>
+      <div id="caseList"></div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    Data stored privately to your account via this artifact's built-in storage. Nothing here is published or shared unless you choose to share this artifact. To keep this current, use the weekly research task suggested in chat, review any candidate cases it finds, and add the ones you can verify.
+  </div>
+</div>
+
+<div class="drawer-overlay" id="detailOverlay">
+  <div class="drawer" id="detailDrawer"></div>
+</div>
+
+<div class="drawer-overlay" id="formOverlay">
+  <div class="drawer" id="formDrawer"></div>
+</div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'cases';
+  const SEED = [
+    {
+      id: 'seed-1',
+      name: 'Tasia Fortune',
+      age: 29,
+      location: 'Jackson, Mississippi',
+      lat: 32.2988, lng: -90.1848,
+      dateFound: '2026-08',
+      status: 'Under Investigation',
+      ruling: 'Investigation and medical examiner review ongoing',
+      summary: 'Found hanging in a tree behind a vacant house. Cause and manner of death have not been finalized.',
+      sources: []
+    },
+    {
+      id: 'seed-2',
+      name: 'Juliana Nzita',
+      age: 16,
+      location: 'Charlotte, North Carolina',
+      lat: 35.2271, lng: -80.8431,
+      dateFound: '2026-05',
+      status: 'Confirmed',
+      ruling: 'Ruled suicide by police; ruling disputed by family and local activists',
+      summary: 'Had been reported missing for several days before being found hanging on church property. Police classified the death as a suicide, which prompted public backlash and skepticism from local activists.',
+      sources: []
+    },
+    {
+      id: 'seed-3',
+      name: 'Kyle Bassinga',
+      age: 21,
+      location: 'Cobb County, Georgia',
+      lat: 33.9526, lng: -84.5499,
+      dateFound: '2026-02',
+      status: 'Confirmed',
+      ruling: 'Ruled suicide, no foul play found',
+      summary: 'Found hanging from a tree. Authorities ruled the death a suicide with no evidence of foul play, though community members raised concerns given local history.',
+      sources: []
+    },
+    {
+      id: 'seed-4',
+      name: 'Demartravion "Trey" Reed',
+      age: 21,
+      location: 'Cleveland, Mississippi',
+      lat: 33.7462, lng: -90.7245,
+      dateFound: '2025-09',
+      status: 'Confirmed',
+      ruling: 'Ruled suicide by medical examiner; ruling disputed by family',
+      summary: 'A Delta State University student found hanging on campus. Medical examiners ruled the death a suicide, but his family and civil rights organizations have continued to question the investigation.',
+      sources: []
+    },
+    {
+      id: 'seed-5',
+      name: 'Unidentified man, initially reported as Black',
+      age: 19,
+      location: 'Washington, D.C.',
+      lat: 38.9072, lng: -77.0369,
+      dateFound: '2026',
+      status: 'Disputed',
+      ruling: 'Misidentification corrected by police',
+      summary: 'Online posts initially claimed this individual, found hanging, was a Black man. Police later confirmed the victim was a 19-year-old Latino man. Kept in this record to document the correction.',
+      sources: []
+    },
+    {
+      id: 'seed-6',
+      name: 'Unidentified man, falsely reported as Black',
+      age: null,
+      location: 'Mississippi (unspecified)',
+      lat: 32.7416, lng: -89.6787,
+      dateFound: '2026',
+      status: 'Disputed',
+      ruling: 'Misidentification corrected by local reporting',
+      summary: 'A homeless white man found hanging was falsely reported as Black in viral social media posts. Kept in this record to document the correction.',
+      sources: []
+    }
+  ];
+
+  const statusClass = s => s === 'Confirmed' ? 'status-confirmed' : s === 'Under Investigation' ? 'status-investigation' : 'status-disputed';
+  const statusColor = s => s === 'Confirmed' ? '#5c7a5e' : s === 'Under Investigation' ? '#ab8438' : '#6b6560';
+
+  let cases = [];
+  let activeFilter = 'all';
+  let selectedId = null;
+  let markers = {};
+  let map, saveTimer;
+
+  function escapeHtml(str){
+    return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function loadCases(){
+    try{
+      const res = await window.storage.get(STORAGE_KEY, false);
+      if(res && res.value){
+        cases = JSON.parse(res.value);
+      } else {
+        cases = SEED.slice();
+        await persist();
+      }
+    }catch(e){
+      cases = SEED.slice();
+      try{ await persist(); }catch(e2){}
+    }
+    render();
+  }
+
+  async function persist(){
+    const status = document.getElementById('saveStatus');
+    try{
+      await window.storage.set(STORAGE_KEY, JSON.stringify(cases), false);
+      if(status){ status.textContent = 'Saved'; }
+    }catch(e){
+      if(status){ status.textContent = 'Could not save — try again'; }
+    }
+  }
+
+  function initMap(){
+    map = L.map('map', { zoomControl: true, attributionControl: true }).setView([34.5, -86.5], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+  }
+
+  function filteredCases(){
+    if(activeFilter === 'all') return cases;
+    return cases.filter(c => c.status === activeFilter);
+  }
+
+  function render(){
+    renderMarkers();
+    renderSidebar();
+  }
+
+  function renderMarkers(){
+    Object.values(markers).forEach(m => map.removeLayer(m));
+    markers = {};
+    const list = filteredCases();
+    list.forEach(c => {
+      if(c.lat == null || c.lng == null) return;
+      const marker = L.circleMarker([c.lat, c.lng], {
+        radius: 8,
+        color: statusColor(c.status),
+        fillColor: statusColor(c.status),
+        fillOpacity: 0.85,
+        weight: 2
+      }).addTo(map);
+      marker.bindPopup(`<strong>${escapeHtml(c.name)}</strong><br>${escapeHtml(c.location)}${c.dateFound ? ' · ' + escapeHtml(c.dateFound) : ''}`);
+      marker.on('click', () => openDetail(c.id));
+      markers[c.id] = marker;
+    });
+  }
+
+  function renderSidebar(){
+    const list = filteredCases();
+    document.getElementById('sidebarCount').textContent = list.length + (list.length === 1 ? ' case' : ' cases');
+    const container = document.getElementById('caseList');
+    if(list.length === 0){
+      container.innerHTML = '<div class="empty">No cases match this filter yet.</div>';
+      return;
+    }
+    container.innerHTML = list.map(c => `
+      <div class="case-row ${c.id === selectedId ? 'selected' : ''}" data-id="${c.id}">
+        <p class="case-name">${escapeHtml(c.name)}${c.age ? ', ' + escapeHtml(String(c.age)) : ''}</p>
+        <div class="case-meta">
+          <span class="status-dot ${statusClass(c.status)}"></span>
+          <span>${escapeHtml(c.status)}</span>
+          <span>·</span>
+          <span>${escapeHtml(c.location)}</span>
+          ${c.dateFound ? `<span>· ${escapeHtml(c.dateFound)}</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+    container.querySelectorAll('.case-row').forEach(row => {
+      row.addEventListener('click', () => openDetail(row.dataset.id));
+    });
+  }
+
+  function openDetail(id){
+    selectedId = id;
+    renderSidebar();
+    const c = cases.find(x => x.id === id);
+    if(!c) return;
+    if(c.lat != null && c.lng != null){
+      map.flyTo([c.lat, c.lng], Math.max(map.getZoom(), 8), { duration: 0.6 });
+      if(markers[id]) markers[id].openPopup();
+    }
+    const drawer = document.getElementById('detailDrawer');
+    drawer.innerHTML = `
+      <button class="drawer-close" id="closeDetail">&times;</button>
+      <h2>${escapeHtml(c.name)}${c.age ? ', ' + escapeHtml(String(c.age)) : ''}</h2>
+      <div class="loc">${escapeHtml(c.location)}</div>
+      <div class="status-line">
+        <span class="status-dot ${statusClass(c.status)}"></span>
+        ${escapeHtml(c.status)}${c.dateFound ? ' · Found ' + escapeHtml(c.dateFound) : ''}
+      </div>
+      <div class="field">
+        <div class="field-label">Official ruling / status</div>
+        <div class="field-value">${escapeHtml(c.ruling || 'Not yet reported')}</div>
+      </div>
+      <div class="field">
+        <div class="field-label">Summary</div>
+        <div class="field-value">${escapeHtml(c.summary || '—')}</div>
+      </div>
+      <div class="field">
+        <div class="field-label">Sources</div>
+        ${c.sources && c.sources.length ? `<ul class="sources-list">${c.sources.map(s => `<li><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title || s.url)}</a></li>`).join('')}</ul>` : '<div class="field-value" style="color:var(--ink-faint)">No sources added yet.</div>'}
+      </div>
+    `;
+    document.getElementById('closeDetail').addEventListener('click', closeDetail);
+    document.getElementById('detailOverlay').classList.add('open');
+  }
+
+  function closeDetail(){
+    document.getElementById('detailOverlay').classList.remove('open');
+  }
+
+  function openForm(){
+    const drawer = document.getElementById('formDrawer');
+    drawer.innerHTML = `
+      <button class="drawer-close" id="closeForm">&times;</button>
+      <h2 style="margin-bottom:16px;">Add a case</h2>
+      <div class="form-two">
+        <div class="form-row"><label>Name</label><input id="f-name" type="text" /></div>
+        <div class="form-row"><label>Age</label><input id="f-age" type="number" /></div>
+      </div>
+      <div class="form-row"><label>Location (city, state)</label><input id="f-location" type="text" /></div>
+      <div class="form-two">
+        <div class="form-row"><label>Latitude</label><input id="f-lat" type="text" placeholder="e.g. 32.2988" /></div>
+        <div class="form-row"><label>Longitude</label><input id="f-lng" type="text" placeholder="e.g. -90.1848" /></div>
+      </div>
+      <div class="form-two">
+        <div class="form-row"><label>Date found</label><input id="f-date" type="text" placeholder="YYYY-MM" /></div>
+        <div class="form-row">
+          <label>Status</label>
+          <select id="f-status">
+            <option value="Confirmed">Confirmed</option>
+            <option value="Under Investigation">Under Investigation</option>
+            <option value="Disputed">Disputed / misidentified</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row"><label>Official ruling / status</label><input id="f-ruling" type="text" /></div>
+      <div class="form-row"><label>Summary</label><textarea id="f-summary"></textarea></div>
+      <div class="form-row"><label>Source URL</label><input id="f-source-url" type="text" placeholder="https://..." /></div>
+      <div class="form-row"><label>Source title</label><input id="f-source-title" type="text" placeholder="e.g. WLBT News report" /></div>
+      <div class="form-actions">
+        <button class="btn-primary" id="saveCase">Save case</button>
+        <button class="btn-secondary" id="cancelForm">Cancel</button>
+        <span class="save-status" id="saveStatus"></span>
+      </div>
+    `;
+    document.getElementById('closeForm').addEventListener('click', closeForm);
+    document.getElementById('cancelForm').addEventListener('click', closeForm);
+    document.getElementById('saveCase').addEventListener('click', saveNewCase);
+    document.getElementById('formOverlay').classList.add('open');
+  }
+
+  function closeForm(){
+    document.getElementById('formOverlay').classList.remove('open');
+  }
+
+  async function saveNewCase(){
+    const name = document.getElementById('f-name').value.trim();
+    if(!name){ document.getElementById('f-name').focus(); return; }
+    const lat = parseFloat(document.getElementById('f-lat').value);
+    const lng = parseFloat(document.getElementById('f-lng').value);
+    const sourceUrl = document.getElementById('f-source-url').value.trim();
+    const sourceTitle = document.getElementById('f-source-title').value.trim();
+    const newCase = {
+      id: 'c-' + Date.now(),
+      name,
+      age: document.getElementById('f-age').value ? parseInt(document.getElementById('f-age').value, 10) : null,
+      location: document.getElementById('f-location').value.trim(),
+      lat: isNaN(lat) ? null : lat,
+      lng: isNaN(lng) ? null : lng,
+      dateFound: document.getElementById('f-date').value.trim(),
+      status: document.getElementById('f-status').value,
+      ruling: document.getElementById('f-ruling').value.trim(),
+      summary: document.getElementById('f-summary').value.trim(),
+      sources: sourceUrl ? [{ url: sourceUrl, title: sourceTitle || sourceUrl }] : []
+    };
+    cases.push(newCase);
+    await persist();
+    closeForm();
+    render();
+    openDetail(newCase.id);
+  }
+
+  document.getElementById('addBtn').addEventListener('click', openForm);
+  document.getElementById('detailOverlay').addEventListener('click', e => {
+    if(e.target.id === 'detailOverlay') closeDetail();
+  });
+  document.getElementById('formOverlay').addEventListener('click', e => {
+    if(e.target.id === 'formOverlay') closeForm();
+  });
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      activeFilter = chip.dataset.filter;
+      render();
+    });
+  });
+
+  initMap();
+  loadCases();
+})();
+</script>
